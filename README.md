@@ -15,25 +15,47 @@ GPU profiling and observability
 The pipeline classifies satellite imagery from the EuroSAT dataset into 10 land-cover categories.
 
 System Architecture
-                 EuroSAT Dataset
-                       |
-                       |
-                PyTorch DataLoader
-                       |
-                       |
-              CPU → GPU Data Transfer
-                       |
-                       |
-          Custom CUDA Image Processing Kernel
-                       |
-                       |
-                CNN Feature Extractor
-                       |
-                       |
-              Classification Head
-                       |
-                       |
-             Prediction + Evaluation
+                    EuroSAT Dataset
+                          |
+                          |
+                    dataset.py
+                          |
+                          |
+              Train / Validation / Test Split
+                          |
+                          |
+                  PyTorch DataLoader
+                          |
+                          |
+              -------------------------
+              |                       |
+              |                       |
+        benchmark.py             train.py
+              |                       |
+              |                       |
+      CUDA/OpenMP Test        CUDA preprocessing
+                                      |
+                                      |
+                              CNN Forward Pass
+                                      |
+                                      |
+                              Loss Calculation
+                                      |
+                                      |
+                              Backpropagation
+                                      |
+                                      |
+                              Model Checkpoint
+                                      |
+                                      |
+                    ------------------------------
+                    |                            |
+                    |                            |
+              evaluate.py                 visualize.py
+                    |                            |
+                    |                            |
+        Accuracy/F1/Recall          Image Predictions
+        Confusion Matrix             Confidence Scores
 Project Flow
 1. Data Pipeline
 
