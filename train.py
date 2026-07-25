@@ -1,145 +1,237 @@
+import os
+import json
 import time
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from tqdm import tqdm
-
-from torch.utils.tensorboard import SummaryWriter
-
-from torch.profiler import (
-    profile,
-    ProfilerActivity,
-    schedule,
-    tensorboard_trace_handler
-)
-
-
-import config
+from torch.cuda.amp import autocast, GradScaler
 
 from dataset import create_dataloaders
 
-from model import EuroSATNet
+import tensorboardX
 
-from utils import (
-    seed_everything,
-    save_checkpoint,
-    calculate_accuracy,
-    get_gpu_memory,
-    AverageMeter
+
+# ============================================================
+# CONFIG
+# ============================================================
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+EPOCHS = 20
+LR = 1e-3
+
+
+os.makedirs("checkpoints", exist_ok=True)
+
+
+print("=" * 60)
+print("EuroSAT GPU Training Pipeline")
+print("=" * 60)
+
+print("Device:", DEVICE)
+
+if DEVICE == "cuda":
+    print("GPU:", torch.cuda.get_device_name(0))
+
+
+writer = tensorboardX.SummaryWriter(
+    "./runs/eurosat_training"
+)
+
+
+# ============================================================
+# MODEL
+# ============================================================
+
+
+class EuroSATNet(nn.Module):
+
+    def __init__(self):
+
+        super().__init__()
+
+        self.features = nn.Sequential(
+
+            nn.Conv2d(
+                3,
+                64,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(64),
+
+            nn.ReLU(),
+
+            nn.MaxPool2d(2),
+
+
+            nn.Conv2d(
+                64,
+                128,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(128),
+
+            nn.ReLU(),
+
+            nn.MaxPool2d(2),
+
+
+            nn.Conv2d(
+                128,
+                256,
+                kernel_size=3,
+                padding=1
+            ),
+
+            nn.BatchNorm2d(256),
+
+            nn.ReLU(),
+
+
+            nn.AdaptiveAvgPool2d((1,1))
+        )
+
+
+        self.classifier = nn.Sequential(
+
+            nn.Dropout(0.3),
+
+            nn.Linear(
+                256,
+                128
+            ),
+
+            nn.ReLU(),
+
+            nn.Dropout(0.3),
+
+            nn.Linear(
+                128,
+                10
+            )
+
+        )
+
+
+    def forward(self,x):
+
+        x = self.features(x)
+
+        x = x.flatten(1)
+
+        return self.classifier(x)
+
+
+
+# ============================================================
+# DATA
+# ============================================================
+
+
+print("\nLoading EuroSAT dataset...")
+
+
+train_loader, val_loader, test_loader = create_dataloaders()
+
+
+print(
+    "Train:",
+    len(train_loader.dataset)
+)
+
+print(
+    "Validation:",
+    len(val_loader.dataset)
+)
+
+print(
+    "Test:",
+    len(test_loader.dataset)
 )
 
 
 
 # ============================================================
-# Optional CUDA preprocessing extension
+# TRAINING SETUP
 # ============================================================
 
 
-try:
-
-    import native_ops
-
-    USE_NATIVE_OPS = True
+model = EuroSATNet().to(DEVICE)
 
 
-except ImportError:
-
-    print(
-        "native_ops unavailable. "
-        "Using PyTorch preprocessing."
-    )
-
-    USE_NATIVE_OPS = False
+criterion = nn.CrossEntropyLoss()
 
 
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=LR,
+    weight_decay=1e-4
+)
 
 
-
-# ============================================================
-# CUDA preprocessing wrapper
-# ============================================================
-
-
-def preprocess(images):
-
-    """
-    Runs custom CUDA image normalization.
-
-    Input:
-
-        [batch, channels, height, width]
+scheduler = optim.lr_scheduler.CosineAnnealingLR(
+    optimizer,
+    T_max=EPOCHS
+)
 
 
-    Output:
-
-        normalized tensor
-
-    """
-
-    if (
-        USE_NATIVE_OPS
-        and
-        images.is_cuda
-    ):
-
-        images = native_ops.normalize_images(
-            images,
-            config.CUDA_MEAN,
-            config.CUDA_STD,
-            True
-        )[0]
-
-
-    return images
-
-
+scaler = GradScaler()
 
 
 
 # ============================================================
-# Validation
+# TRAIN LOOP
 # ============================================================
 
 
-def validate(
-        model,
-        loader,
-        criterion
-):
-
-
-    model.eval()
-
-
-    loss_meter = AverageMeter()
-
-    accuracy_meter = AverageMeter()
+best_accuracy = 0
 
 
 
-    with torch.no_grad():
+for epoch in range(EPOCHS):
 
 
-        for images, labels in loader:
+    model.train()
 
 
-            images = images.to(
-                config.DEVICE,
-                non_blocking=True
-            )
+    running_loss = 0
+
+    correct = 0
+
+    total = 0
 
 
-            labels = labels.to(
-                config.DEVICE,
-                non_blocking=True
-            )
 
+    start = time.time()
+
+
+
+    for images, labels in train_loader:
+
+
+        images = images.to(
+            DEVICE,
+            non_blocking=True
+        )
+
+        labels = labels.to(
+            DEVICE,
+            non_blocking=True
+        )
+
+
+        optimizer.zero_grad()
+
+
+        with autocast():
 
             outputs = model(images)
-
-
 
             loss = criterion(
                 outputs,
@@ -147,483 +239,223 @@ def validate(
             )
 
 
+        scaler.scale(loss).backward()
 
-            accuracy = calculate_accuracy(
+        scaler.step(
+            optimizer
+        )
+
+        scaler.update()
+
+
+
+        running_loss += loss.item()
+
+
+
+        predictions = torch.argmax(
+            outputs,
+            dim=1
+        )
+
+
+        correct += (
+            predictions == labels
+        ).sum().item()
+
+
+        total += labels.size(0)
+
+
+
+    train_accuracy = correct / total
+
+    train_loss = running_loss / len(train_loader)
+
+
+
+    scheduler.step()
+
+
+
+    # ========================================================
+    # VALIDATION
+    # ========================================================
+
+
+    model.eval()
+
+
+    val_correct = 0
+
+    val_total = 0
+
+
+    with torch.no_grad():
+
+        for images, labels in val_loader:
+
+
+            images = images.to(DEVICE)
+
+            labels = labels.to(DEVICE)
+
+
+            outputs = model(images)
+
+
+            predictions = torch.argmax(
                 outputs,
-                labels
+                dim=1
             )
 
 
-
-            loss_meter.update(
-                loss.item(),
-                images.size(0)
-            )
+            val_correct += (
+                predictions == labels
+            ).sum().item()
 
 
-            accuracy_meter.update(
-                accuracy,
-                images.size(0)
-            )
+            val_total += labels.size(0)
 
 
 
-    return (
-        loss_meter.average,
-        accuracy_meter.average
-    )
+    val_accuracy = val_correct / val_total
 
 
 
-
-
-# ============================================================
-# Training
-# ============================================================
-
-
-def train():
-
-    seed_everything(
-        config.SEED
-    )
-
-
-    writer = SummaryWriter(
-        log_dir=config.RUN_DIR
-    )
-
-
-
-    train_loader, val_loader, _ = (
-        create_dataloaders()
-    )
-
-
-
-    model = EuroSATNet(
-        config.NUM_CLASSES
-    )
-
-
-    model = model.to(
-        config.DEVICE
-    )
-
-
-
-    criterion = nn.CrossEntropyLoss()
-
-
-
-    optimizer = optim.AdamW(
-
-        model.parameters(),
-
-        lr=config.LEARNING_RATE,
-
-        weight_decay=config.WEIGHT_DECAY
-
-    )
-
-
-
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(
-
-        optimizer,
-
-        T_max=config.EPOCHS
-
-    )
-
-
-
-    scaler = torch.cuda.amp.GradScaler(
-        enabled=config.USE_AMP
-    )
-
-
-
-    best_accuracy = 0.0
+    elapsed = time.time() - start
 
 
 
     print(
-        f"Training on {config.DEVICE}"
-    )
-
-
-
-    # ========================================================
-    # PyTorch Profiler
-    # ========================================================
-
-
-    with profile(
-
-        activities=[
-
-            ProfilerActivity.CPU,
-
-            ProfilerActivity.CUDA
-
-        ],
-
-
-        schedule=schedule(
-
-            wait=1,
-
-            warmup=1,
-
-            active=3
-
-        ),
-
-
-        on_trace_ready=
-        tensorboard_trace_handler(
-
-            str(
-                config.RUN_DIR /
-                "profiler"
-            )
-
-        ),
-
-
-        record_shapes=True,
-
-        profile_memory=True
-
-    ) as prof:
-
-
-
-        for epoch in range(
-            config.EPOCHS
-        ):
-
-
-            model.train()
-
-
-
-            loss_meter = AverageMeter()
-
-            accuracy_meter = AverageMeter()
-
-
-
-            progress = tqdm(
-
-                train_loader,
-
-                desc=
-                f"Epoch {epoch}"
-
-            )
-
-
-
-            for batch_idx, (
-                images,
-                labels
-            ) in enumerate(progress):
-
-
-                images = images.to(
-
-                    config.DEVICE,
-
-                    non_blocking=True
-
-                )
-
-
-                labels = labels.to(
-
-                    config.DEVICE,
-
-                    non_blocking=True
-
-                )
-
-
-
-                # ------------------------
-                # CUDA preprocessing
-                # ------------------------
-
-
-                images = preprocess(
-                    images
-                )
-
-
-
-                optimizer.zero_grad(
-                    set_to_none=True
-                )
-
-
-
-                # ------------------------
-                # Mixed precision forward
-                # ------------------------
-
-
-                with torch.cuda.amp.autocast(
-
-                    enabled=config.USE_AMP
-
-                ):
-
-
-                    outputs = model(
-                        images
-                    )
-
-
-                    loss = criterion(
-
-                        outputs,
-
-                        labels
-
-                    )
-
-
-
-                # ------------------------
-                # Backpropagation
-                # ------------------------
-
-
-                scaler.scale(
-                    loss
-                ).backward()
-
-
-
-                scaler.step(
-                    optimizer
-                )
-
-
-                scaler.update()
-
-
-
-                accuracy = calculate_accuracy(
-
-                    outputs,
-
-                    labels
-
-                )
-
-
-
-                loss_meter.update(
-
-                    loss.item(),
-
-                    images.size(0)
-
-                )
-
-
-                accuracy_meter.update(
-
-                    accuracy,
-
-                    images.size(0)
-
-                )
-
-
-
-                progress.set_postfix({
-
-                    "loss":
-                    f"{loss_meter.average:.3f}",
-
-                    "acc":
-                    f"{accuracy_meter.average:.3f}"
-
-                })
-
-
-
-                prof.step()
-
-
-
-            # =================================================
-            # Validation after epoch
-            # =================================================
-
-
-            val_loss, val_accuracy = validate(
-
-                model,
-
-                val_loader,
-
-                criterion
-
-            )
-
-
-
-            scheduler.step()
-
-
-
-            print(
-
-                f"""
-
-Epoch {epoch}
+        f"""
+Epoch {epoch+1}/{EPOCHS}
 
 Train Loss:
-{loss_meter.average:.4f}
+{train_loss:.4f}
 
 Train Accuracy:
-{accuracy_meter.average:.4f}
-
-Validation Loss:
-{val_loss:.4f}
+{train_accuracy:.4f}
 
 Validation Accuracy:
 {val_accuracy:.4f}
 
+Time:
+{elapsed:.2f}s
 """
+    )
 
-            )
 
 
+    writer.add_scalar(
+        "Loss/train",
+        train_loss,
+        epoch
+    )
 
-            # TensorBoard
 
-            writer.add_scalar(
+    writer.add_scalar(
+        "Accuracy/train",
+        train_accuracy,
+        epoch
+    )
 
-                "Loss/train",
 
-                loss_meter.average,
+    writer.add_scalar(
+        "Accuracy/validation",
+        val_accuracy,
+        epoch
+    )
 
-                epoch
 
-            )
 
+    torch.save(
 
-            writer.add_scalar(
+        {
+            "epoch": epoch,
 
-                "Loss/validation",
+            "model_state_dict":
+                model.state_dict(),
 
-                val_loss,
+            "optimizer_state_dict":
+                optimizer.state_dict(),
 
-                epoch
+            "accuracy":
+                val_accuracy
+        },
 
-            )
+        f"checkpoints/checkpoint_epoch_{epoch}.pt"
 
+    )
 
-            writer.add_scalar(
 
-                "Accuracy/train",
 
-                accuracy_meter.average,
+    if val_accuracy > best_accuracy:
 
-                epoch
+        best_accuracy = val_accuracy
 
-            )
 
+        torch.save(
+            model.state_dict(),
+            "best_model.pth"
+        )
 
-            writer.add_scalar(
 
-                "Accuracy/validation",
 
-                val_accuracy,
+# ============================================================
+# FINAL SAVE
+# ============================================================
 
-                epoch
 
-            )
+torch.save(
+    model.state_dict(),
+    "final_model_weights.pth"
+)
 
 
 
-            if torch.cuda.is_available():
+with open(
+    "training_metrics.json",
+    "w"
+) as f:
 
+    json.dump(
+        {
+            "best_validation_accuracy":
+                best_accuracy
+        },
 
-                memory = get_gpu_memory()
+        f,
 
+        indent=4
+    )
 
 
-                writer.add_scalar(
 
-                    "GPU/memory_allocated",
+writer.close()
 
-                    memory["allocated"],
 
-                    epoch
 
-                )
+print("\nTraining Complete!")
 
+print(
+    "Best Validation Accuracy:",
+    best_accuracy
+)
 
+print(
+    "Saved:"
+)
 
-            # Save latest checkpoint
+print(
+    "- best_model.pth"
+)
 
+print(
+    "- final_model_weights.pth"
 
-            save_checkpoint(
+)
 
-                model,
-
-                optimizer,
-
-                scheduler,
-
-                epoch,
-
-                val_loss,
-
-                val_accuracy,
-
-                config.LAST_CHECKPOINT_PATH
-
-            )
-
-
-
-            # Save best model
-
-
-            if val_accuracy > best_accuracy:
-
-
-                best_accuracy = val_accuracy
-
-
-
-                torch.save(
-
-                    model.state_dict(),
-
-                    config.BEST_MODEL_PATH
-
-                )
-
-
-
-                print(
-                    "Saved new best model"
-                )
-
-
-
-    writer.close()
-
-
-
-if __name__ == "__main__":
-
-    train()
+print(
+    "- checkpoints/"
+)
