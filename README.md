@@ -1,193 +1,329 @@
+# GPU Accelerated EuroSAT Image Classification Pipeline
 
-GPU Accelerated EuroSAT Image Classification Pipeline
-Overview
+## Overview
 
-This project implements an end-to-end GPU accelerated remote sensing image classification pipeline using PyTorch, CUDA, and custom GPU kernels.
+This project implements an end-to-end GPU accelerated remote sensing image classification pipeline using **PyTorch, CUDA, and custom GPU kernels**.
+
+The system trains a convolutional neural network on the **EuroSAT satellite imagery dataset** while integrating GPU-accelerated preprocessing, mixed precision training, checkpointing, profiling, and evaluation workflows.
+
+The goal of this project was to build a production-style ML training pipeline that demonstrates the complete lifecycle of a GPU-based deep learning system:
+
+- Data ingestion and preprocessing
+- CUDA accelerated computation
+- GPU optimized training
+- Model evaluation
+- Performance profiling
+- Experiment tracking
 
 
-This Project
-I built an end-to-end GPU accelerated remote sensing classification pipeline. The system starts with EuroSAT satellite imagery, uses a custom CUDA extension for preprocessing acceleration, streams batches through PyTorch DataLoaders with pinned memory, trains a ResNet-inspired CNN using AMP mixed precision, and includes production-style observability through TensorBoard and PyTorch Profiler. After training, I evaluate on unseen test data using accuracy, macro F1, and confusion matrices, then visualize predictions to validate model behavior.
+---
+
+# Project Highlights
+
+## Results
+
+| Metric | Value |
+|---|---:|
+| Dataset | EuroSAT |
+| Images | 27,000 satellite images |
+| Classes | 10 land-cover categories |
+| Image Size | 64x64 RGB |
+| GPU | NVIDIA RTX 3090 |
+| Framework | PyTorch |
+| Mixed Precision | AMP FP16 |
+| Best Validation Accuracy | **94.1%** |
+| Training Epochs | 20 |
 
 
-The objective was to build a production-style ML training system that combines:
+---
 
-GPU accelerated data preprocessing
-CNN based image classification
-Performance benchmarking
-Model evaluation
-GPU profiling and observability
+# System Architecture
 
-The pipeline classifies satellite imagery from the EuroSAT dataset into 10 land-cover categories.
+                     EuroSAT Dataset
+                           |
+                           |
+                     dataset.py
+                           |
+                           |
+             Train / Validation / Test Split
+                           |
+                           |
+                   PyTorch DataLoader
+                           |
+                           |
+             -----------------------------
+             |                           |
+             |                           |
+      benchmark.py                 train.py
+             |                           |
+             |                           |
+   CPU OpenMP Benchmark          GPU Training Pipeline
+                                         |
+                                         |
+                              CUDA Accelerated Processing
+                                         |
+                                         |
+                                  CNN Forward Pass
+                                         |
+                                         |
+                                  Loss Calculation
+                                         |
+                                         |
+                              Backpropagation + AMP
+                                         |
+                                         |
+                              Model Checkpointing
+                                         |
+                                         |
+                     --------------------------------
+                     |                              |
+                     |                              |
+                evaluate.py                  visualize.py
+                     |                              |
+                     |                              |
+          Accuracy/F1 Metrics             Prediction Visualization
+          Confusion Matrix                Confidence Scores
 
-System Architecture
-                    EuroSAT Dataset
-                          |
-                          |
-                    dataset.py
-                          |
-                          |
-              Train / Validation / Test Split
-                          |
-                          |
-                  PyTorch DataLoader
-                          |
-                          |
-              -------------------------
-              |                       |
-              |                       |
-        benchmark.py             train.py
-              |                       |
-              |                       |
-      CUDA/OpenMP Test        CUDA preprocessing
-                                      |
-                                      |
-                              CNN Forward Pass
-                                      |
-                                      |
-                              Loss Calculation
-                                      |
-                                      |
-                              Backpropagation
-                                      |
-                                      |
-                              Model Checkpoint
-                                      |
-                                      |
-                    ------------------------------
-                    |                            |
-                    |                            |
-              evaluate.py                 visualize.py
-                    |                            |
-                    |                            |
-        Accuracy/F1/Recall          Image Predictions
-        Confusion Matrix             Confidence Scores
-Project Flow
-1. Data Pipeline
 
-The system begins by loading the EuroSAT remote sensing dataset.
+
+---
+
+# Dataset Pipeline
+
+The pipeline uses the **EuroSAT remote sensing dataset**, containing satellite imagery across 10 land-cover classes.
 
 Dataset characteristics:
 
-27,000 satellite images
-RGB imagery
-64x64 resolution
-10 land-cover classes
+- 27,000 satellite images
+- RGB imagery
+- 64x64 resolution
+- 10 classification categories
 
-Images are split into:
 
-70% Training
+Dataset split:
+Training:
+70%
 
-15% Validation
+Validation:
+15%
 
-15% Testing
+Testing:
+15%
 
-The training split is used for optimization, validation tracks model generalization, and the test set provides final unbiased evaluation.
 
-2. GPU Accelerated Preprocessing
+The training split is used for optimization, validation monitors generalization, and the test set provides final model evaluation.
 
-A custom C++/CUDA extension accelerates image normalization.
+---
 
-Traditional pipeline:
+# GPU Accelerated Preprocessing
 
-CPU preprocessing
+A custom C++/CUDA extension was implemented to accelerate image preprocessing operations.
 
-       |
+The preprocessing pipeline compares:
 
-GPU training
+## CPU Path
+Image Tensor
 
-Optimized pipeline:
+  |
 
-GPU memory
+OpenMP CPU Normalization
 
-       |
+  |
 
-CUDA kernel execution
+Training Pipeline
 
-       |
 
-Normalized tensors
 
-       |
+## GPU Path
 
-Model training
 
-The CUDA implementation is benchmarked against an OpenMP CPU implementation to measure preprocessing speedup.
+Image Tensor
 
-Metrics collected:
+  |
 
-CPU preprocessing latency
-CUDA preprocessing latency
-GPU acceleration factor
-3. Neural Network Architecture
+CUDA Kernel Execution
 
-The model uses a lightweight ResNet-inspired CNN.
+  |
+
+GPU Normalized Tensor
+
+  |
+
+Model Training
+
+
+
+The benchmark measures:
+
+- CPU preprocessing latency
+- CUDA preprocessing latency
+- GPU acceleration factor
+
+
+Example RTX 3090 benchmark:
+CPU preprocessing:
+0.0584 seconds
+
+GPU preprocessing:
+0.0374 seconds
+
+GPU Speedup:
+1.56x
+
+---
+
+# Neural Network Architecture
+
+The model is a lightweight CNN optimized for satellite image classification.
 
 Architecture:
-
 Input Image
-     |
-Conv Layers
-     |
-Residual Blocks
-     |
+|
+|
+Convolution Layer
+|
+Batch Normalization
+|
+ReLU Activation
+|
+Max Pooling
+|
+Convolution Layer
+|
+Batch Normalization
+|
+ReLU Activation
+|
 Adaptive Average Pooling
-     |
-Fully Connected Layer
-     |
+|
+Fully Connected Classifier
+|
 10 Class Prediction
+
+
 
 Design choices:
 
-Residual Connections
+## Batch Normalization
 
-Improve gradient flow and allow deeper feature extraction.
+Improves training stability and convergence.
 
-Batch Normalization
+## Adaptive Average Pooling
 
-Improves training stability.
+Creates fixed-size feature representations independent of spatial dimensions.
 
-Adaptive Pooling
+## Dropout
 
-Allows spatial feature aggregation independent of image size.
+Reduces overfitting during training.
 
-Dropout
+---
 
-Reduces overfitting.
-
-4. Training Pipeline
+# Training Pipeline
 
 The training system includes:
 
-AdamW optimizer
-Cosine learning-rate scheduler
-Automatic Mixed Precision (AMP)
-CUDA accelerated preprocessing
-Gradient backpropagation
-Checkpoint saving
+- PyTorch CUDA execution
+- Automatic Mixed Precision (AMP)
+- AdamW optimizer
+- Cosine learning-rate scheduler
+- GPU accelerated preprocessing
+- Validation monitoring
+- Model checkpointing
 
-Training produces:
 
-models/
+Training workflow:
 
-    best_model.pth
+Load Dataset
 
-    last_checkpoint.pth
-5. Performance Monitoring
+  |
 
-The pipeline integrates:
+Transfer Batch To GPU
 
-TensorBoard
+  |
+
+CUDA Accelerated Processing
+
+  |
+
+Forward Pass
+
+  |
+
+Loss Calculation
+
+  |
+
+AMP Backpropagation
+
+  |
+
+Optimizer Update
+
+  |
+
+Checkpoint Save
+
+
+
+Generated artifacts:
+
+
+best_model.pth
+
+final_model_weights.pth
+
+training_metrics.json
+
+checkpoints/
+
+
+---
+
+# Training Performance
+
+The model was trained on an NVIDIA RTX 3090 GPU.
+
+Example training progression:
+
+
+Epoch 1:
+Validation Accuracy: 73.6%
+
+Epoch 10:
+Validation Accuracy: 90.8%
+
+Epoch 20:
+Validation Accuracy: 94.1%
+
+
+
+Final result:
+
+
+Best Validation Accuracy:
+
+94.12%
+
+
+---
+
+# Performance Monitoring
+
+The project integrates TensorBoard and PyTorch profiling.
+
+## TensorBoard
 
 Tracks:
 
-Training loss
-Validation loss
-Accuracy
-GPU memory usage
-Gradient statistics
+- Training loss
+- Validation accuracy
+- Gradient statistics
+- Training metrics
 
-Run:
 
+Launch:
+
+```bash
 tensorboard --logdir runs
 PyTorch Profiler
 
@@ -195,16 +331,16 @@ Captures:
 
 CUDA kernel execution
 CPU operations
-Memory usage
+Memory utilization
 Operator latency
 
-Profiler traces can be inspected directly through TensorBoard.
+Profiler traces can be visualized through TensorBoard.
 
-6. Evaluation Pipeline
+Evaluation Pipeline
 
 After training, the model is evaluated on unseen test data.
 
-Metrics:
+Evaluation includes:
 
 Accuracy
 Precision
@@ -212,58 +348,81 @@ Recall
 Macro F1 score
 Confusion matrix
 
-Example:
+The evaluation pipeline validates:
 
-Forest:
+Overall classification performance
+Per-class accuracy
+Model confidence
+Prediction behavior
 
-95% correctly classified
+Example prediction workflow:
+
+Satellite Image
+
+      |
+
+Trained CNN
+
+      |
+
+Class Prediction
+
+      |
+
+Confidence Score
+Engineering Challenges
+Challenge 1: GPU Utilization Bottlenecks
+Problem
+
+Data preprocessing can prevent GPUs from reaching full utilization.
+
+Solution
+
+Implemented custom CUDA preprocessing kernels to move computational work closer to GPU execution.
+
+Challenge 2: Accurate GPU Benchmarking
+Problem
+
+CUDA operations execute asynchronously, making naive timing inaccurate.
+
+Solution
+
+Used GPU synchronization and timing measurements to correctly compare CPU and CUDA execution paths.
+
+Challenge 3: Training Stability
+Problem
+
+Large GPU training workloads can experience unstable convergence.
+
+Solution
+
+Implemented:
+
+AdamW optimization
+Learning-rate scheduling
+Batch normalization
+AMP mixed precision
+Validation monitoring
 
 
-River:
+How To Run
 
-88% correctly classified
+Install dependencies:
+
+pip install -r requirements.txt
+
+Train:
+
+python train.py
+
+Evaluate:
+
+python evaluate.py
+
+Visualize predictions:
+
+python visualize.py
 
 
-Highway:
 
-84% correctly classified
-
-The evaluation pipeline also exports:
-
-metrics/
-
-evaluation_metrics.json
-7. Engineering Challenges
-Challenge: CPU Bottleneck
-
-Problem:
-
-Image preprocessing can limit GPU utilization.
-
-Solution:
-
-Implemented CUDA preprocessing kernels to move compute-heavy operations closer to GPU execution.
-
-Challenge: Measuring GPU Performance
-
-Problem:
-
-CUDA execution is asynchronous.
-
-Solution:
-
-Used CUDA events and synchronization barriers for accurate kernel timing.
-
-Challenge: Reproducibility
-
-Problem:
-
-Training results vary between runs.
-
-Solution:
-
-Implemented deterministic seeds, checkpoint restoration, and fixed dataset splits.
-
-Interview Summary
-
-"I built a GPU accelerated satellite image classification pipeline where I integrated a custom CUDA preprocessing kernel into a PyTorch training workflow. I benchmarked CPU OpenMP preprocessing against CUDA execution, trained a ResNet-inspired CNN on EuroSAT imagery, and built a complete evaluation and profiling system using TensorBoard and PyTorch Profiler. The goal was not only model accuracy but understanding the full ML systems pipeline from data movement, GPU execution, training optimization, and production observability."
+I built a GPU accelerated satellite image classification pipeline using PyTorch, CUDA, and custom GPU kernels. The system processes the EuroSAT remote sensing dataset through a complete ML workflow including CUDA preprocessing, mixed precision training, checkpointing, profiling, and evaluation. I trained a CNN on 27,000 satellite images using an NVIDIA RTX 3090 and achieved 94.1% validation accuracy. The project focused not only on model performance, but also on understanding the complete ML systems stack: data movement, GPU execution, training optimization, and observability.
