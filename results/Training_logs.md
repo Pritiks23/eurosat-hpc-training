@@ -97,4 +97,9 @@ final_model_weights.pth
 checkpoints/
 ```
 
+## Extra:
+Also CUDA benchmark ran:
+
+GPU preprocessing: 0.037436s
+GPU Speedup: 1.56x
 
