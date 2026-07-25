@@ -4,6 +4,11 @@ Overview
 
 This project implements an end-to-end GPU accelerated remote sensing image classification pipeline using PyTorch, CUDA, and custom GPU kernels.
 
+
+This Project
+I built an end-to-end GPU accelerated remote sensing classification pipeline. The system starts with EuroSAT satellite imagery, uses a custom CUDA extension for preprocessing acceleration, streams batches through PyTorch DataLoaders with pinned memory, trains a ResNet-inspired CNN using AMP mixed precision, and includes production-style observability through TensorBoard and PyTorch Profiler. After training, I evaluate on unseen test data using accuracy, macro F1, and confusion matrices, then visualize predictions to validate model behavior.
+
+
 The objective was to build a production-style ML training system that combines:
 
 GPU accelerated data preprocessing
