@@ -39,43 +39,41 @@ The goal of this project was to build a production-style ML training pipeline th
 
 # System Architecture
 
-                                            [ EuroSAT Dataset ]
-                              |
-                        [ dataset.py ]
-                              |
-              [ Train / Validation / Test Split ]
-                              |
-                    [ PyTorch DataLoader ]
-                              |
-      +-----------------------+-----------------------+
+## Project Pipeline
 
-      |                                               |
-      v                                               v
-[ benchmark.py ]                                [ train.py ]
-
-      |                                               |
-+-----+-----------------------+         +-------------+-----------------------+
-
-| CPU OpenMP Benchmark        |         | GPU Training Pipeline               |
-| CUDA Accelerated Processing |         | CNN Forward Pass                    |
-+-----------------------------+         | Loss Calculation                    |
-
-                                        | Backpropagation + AMP               |
-                                        | Model Checkpointing                 |
-                                        +-------------+-----------------------+
-                                                      |
-                                      +---------------+---------------+
-
-                                      |                               |
-                                      v                               v
-                               [ evaluate.py ]                [ visualize.py ]
-
-                                      |                               |
-                        +-------------+-------------+   +-------------+-------------+
-
-                        | Accuracy / F1 Metrics     |   | Prediction Visualization  |
-                        | Confusion Matrix          |   | Confidence Scores         |
-                        +---------------------------+   +---------------------------+
+```text
+                          [ EuroSAT Dataset ]
+                                 |
+                           [ dataset.py ]
+                                 |
+               [ Train / Validation / Test Split ]
+                                 |
+                     [ PyTorch DataLoader ]
+                                 |
+         +-----------------------+-----------------------+
+         |                                               |
+         v                                               v
+  [ benchmark.py ]                               [ train.py ]
+         |                                               |
+         |                                +--------------+--------------+
+         |                                | GPU Training Pipeline       |
++--------+-----------------------+         |----------------------------|
+| CPU OpenMP Benchmark           |         | CNN Forward Pass           |
+| CUDA Accelerated Processing    |         | Loss Calculation           |
++--------------------------------+         | Backpropagation + AMP      |
+                                           | Model Checkpointing        |
+                                           +--------------+-------------+
+                                                          |
+                                          +---------------+---------------+
+                                          |                               |
+                                          v                               v
+                                   [ evaluate.py ]                [ visualize.py ]
+                                          |                               |
+                          +---------------+---------------+   +-----------+-----------+
+                          | Accuracy / F1 Metrics         |   | Prediction Visualization |
+                          | Confusion Matrix              |   | Confidence Scores         |
+                          +-------------------------------+   +---------------------------+
+```
 
 ---
 
