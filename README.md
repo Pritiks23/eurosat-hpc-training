@@ -39,51 +39,34 @@ The goal of this project was to build a production-style ML training pipeline th
 
 # System Architecture
 
-                     EuroSAT Dataset
-                           |
-                           |
-                     dataset.py
-                           |
-                           |
-             Train / Validation / Test Split
-                           |
-                           |
-                   PyTorch DataLoader
-                           |
-                           |
-             -----------------------------
-             |                           |
-             |                           |
-      benchmark.py                 train.py
-             |                           |
-             |                           |
-   CPU OpenMP Benchmark          GPU Training Pipeline
-                                         |
-                                         |
-                              CUDA Accelerated Processing
-                                         |
-                                         |
-                                  CNN Forward Pass
-                                         |
-                                         |
-                                  Loss Calculation
-                                         |
-                                         |
-                              Backpropagation + AMP
-                                         |
-                                         |
-                              Model Checkpointing
-                                         |
-                                         |
-                     --------------------------------
-                     |                              |
-                     |                              |
-                evaluate.py                  visualize.py
-                     |                              |
-                     |                              |
-          Accuracy/F1 Metrics             Prediction Visualization
-          Confusion Matrix                Confidence Scores
-
+                      [ EuroSAT Dataset ]
+                              │
+                        [ dataset.py ]
+                              │
+              [ Train / Validation / Test Split ]
+                              │
+                    [ PyTorch DataLoader ]
+                              │
+      ┌───────────────────────┴───────────────────────┐
+      ▼                                               ▼
+[ benchmark.py ]                                [ train.py ]
+      │                                               │
+┌─────┴───────────────────────┐         ┌─────────────┴───────────────────────┐
+│ CPU OpenMP Benchmark        │         │ GPU Training Pipeline               │
+│ CUDA Accelerated Processing │         │ CNN Forward Pass                    │
+└─────────────────────────────┘         │ Loss Calculation                    │
+                                        │ Backpropagation + AMP               │
+                                        │ Model Checkpointing                 │
+                                        └─────────────┬───────────────────────┘
+                                                      │
+                                      ┌───────────────┴───────────────┐
+                                      ▼                               ▼
+                               [ evaluate.py ]                [ visualize.py ]
+                                      │                               │
+                        ┌─────────────┴─────────────┐   ┌─────────────┴─────────────┐
+                        │ Accuracy / F1 Metrics     │   │ Prediction Visualization  │
+                        │ Confusion Matrix          │   │ Confidence Scores         │
+                        └───────────────────────────┘   └───────────────────────────┘
 
 
 ---
