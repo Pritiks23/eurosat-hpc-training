@@ -1,3 +1,8 @@
+""" This file defines the convolutional neural network (CNN) architecture used to classify EuroSAT satellite images
+into one of 10 land-cover classes. It uses ResNet-inspired residual blocks with skip connections to improve gradient
+flow and make training deeper networks more stable, while progressively extracting higher-level image features through
+convolution, pooling, and batch normalization layers. After feature extraction, the network applies global average pooling, 
+dropout for regularization, and a fully connected layer to produce the final class predictions used during training and evaluation. """
 import torch.nn as nn
 
 
