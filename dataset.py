@@ -1,3 +1,8 @@
+""" This file prepares the EuroSAT dataset so it is ready for model training. It downloads the dataset, applies 
+preprocessing transformations (converting images to tensors and normalizing pixel values), splits the data into
+reproducible training, validation, and test sets, and creates PyTorch DataLoaders that efficiently load batches
+of images during training. Using DataLoaders with options like num_workers, pin_memory, and persistent_workers 
+improves data loading performance, helping keep the GPU supplied with data instead of waiting for the CPU."""
 import torch
 
 from torchvision import transforms
