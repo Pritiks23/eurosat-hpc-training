@@ -1,3 +1,7 @@
+""" This file evaluates the trained model on the unseen test dataset to measure how well it generalizes to new images. 
+It loads the saved best model, performs inference on the test set without computing gradients, and calculates performance
+metrics such as accuracy, precision, recall, F1 score, the confusion matrix, and a classification report. 
+These metrics are saved to a JSON file and printed to summarize the model's overall classification performance after training."""
 import json
 
 import torch
