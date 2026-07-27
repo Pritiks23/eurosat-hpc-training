@@ -1,4 +1,5 @@
 // This kernel performs: output= std input−mean for every pixel.
+// his file implements the actual image normalization on both the GPU and CPU. The CUDA kernel launches thousands of GPU threads so each thread normalizes one pixel in parallel, while the CPU version performs the same computation using nested loops over the image dimensions. When normalize_cuda() is called, it allocates an output tensor, configures the CUDA grid and block sizes, launches the kernel on the GPU, and returns the normalized image, providing a much faster implementation for large batches than the CPU version.
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
