@@ -1,3 +1,8 @@
+""" This file contains the complete GPU training pipeline for the EuroSAT image classification model. It initializes the CNN model,
+loads the dataset, configures the optimizer and learning rate scheduler, and trains the network using GPU acceleration with Automatic
+Mixed Precision (AMP) to reduce memory usage and speed up computation. During training, it performs forward passes, calculates loss, 
+runs backpropagation with gradient scaling, evaluates performance on the validation set, logs metrics to TensorBoard, and saves
+checkpoints plus the best-performing model for later evaluation. """
 import os
 import json
 import time
